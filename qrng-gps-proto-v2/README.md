@@ -14,6 +14,7 @@ It implements:
 ```bash
 python -m venv .venv && . .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e .
 python run_demo.py
 pytest -q
 ```
