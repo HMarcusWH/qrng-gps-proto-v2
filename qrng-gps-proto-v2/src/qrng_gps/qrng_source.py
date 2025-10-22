@@ -9,7 +9,8 @@ class QRNG:
     - Otherwise, os.urandom is used (placeholder for a real QRNG device).
     """
     def __init__(self, path: Optional[str] = None):
-        self._f = open(path, "rb") if path else None
+        self._path = Path(path) if path else None
+        self._f = open(self._path, "rb") if self._path else None
 
     def get_bits(self, n: int) -> bytes:
         if self._f:
@@ -23,3 +24,14 @@ class QRNG:
     def close(self):
         if self._f:
             self._f.close()
+            self._f = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+    def __del__(self):
+        self.close()

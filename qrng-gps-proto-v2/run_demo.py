@@ -1,6 +1,6 @@
-import os, argparse
+import argparse
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 from qrng_gps.qrng_source import QRNG
 from qrng_gps import dkba, overlay, esc_meta, meacon_detect
 from qrng_gps.receiver_verify import Verifier
@@ -14,17 +14,28 @@ class SatState:
     nav: Dict[int, bytes]
     esc: Dict[int, dict]
 
-def make_sats(num_sats=4, epochs=8) -> Dict[int, SatState]:
-    sats = {}
-    for sid in range(1, num_sats+1):
-        K = {}; nav = {}; escd = {}
-        for i in range(epochs):
-            Ki = os.urandom(32)
-            K[i] = Ki
-            nav[i] = os.urandom(120)
-            escd[i] = esc_meta.derive_esc_meta(Ki)
-        sats[sid] = SatState(sat_id=sid, K=K, nav=nav, esc=escd)
-    return sats
+def make_sats(num_sats: int = 4, epochs: int = 8, rng: Optional[QRNG] = None) -> Dict[int, SatState]:
+    owns_rng = False
+    if rng is None:
+        rng = QRNG()
+        owns_rng = True
+
+    try:
+        sats = {}
+        for sid in range(1, num_sats + 1):
+            K = {}
+            nav = {}
+            escd = {}
+            for i in range(epochs):
+                Ki = rng.get_bits(32)
+                K[i] = Ki
+                nav[i] = rng.get_bits(120)
+                escd[i] = esc_meta.derive_esc_meta(Ki)
+            sats[sid] = SatState(sat_id=sid, K=K, nav=nav, esc=escd)
+        return sats
+    finally:
+        if owns_rng:
+            rng.close()
 
 def trace_provider_factory(meaconed_sid: int, delay_epochs: int):
     def provider(sat_id: int, i: int):
@@ -39,9 +50,11 @@ def main():
     ap.add_argument("--sats", type=int, default=4)
     ap.add_argument("--meacon-sid", type=int, default=2)
     ap.add_argument("--delay", type=int, default=2, help="meacon delay (epochs)")
+    ap.add_argument("--qrng-path", type=str, default=None, help="path to QRNG entropy file")
     args = ap.parse_args()
 
-    sats = make_sats(num_sats=args.sats, epochs=args.epochs)
+    with QRNG(args.qrng_path) as rng:
+        sats = make_sats(num_sats=args.sats, epochs=args.epochs, rng=rng)
 
     streams: Dict[int, List[overlay.EpochMsg]] = {}
     for sid, st in sats.items():
